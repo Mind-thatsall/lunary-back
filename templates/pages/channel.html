@@ -1,0 +1,17 @@
+{{template "partials/header" .}}
+
+<h1>{{ .Text }}</h1>
+{{if .User}}
+<p>Your username is {{ .User.Username }} and the channel is {{ .ChannelId }}</p>
+{{end}}
+
+<ul id="chat_room"></ul>
+<form id="chat_form" hx-swap="none" hx-post="/api/new_message/{{ .ServerId }}/{{ .ChannelId }}">
+  <input name="Content" />
+</form>
+
+<script type="text/hyperscript">
+on htmx:afterSwap put "" into <input />'s value end
+</script>
+
+{{template "partials/footer" .}}

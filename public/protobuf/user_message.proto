@@ -1,0 +1,17 @@
+
+syntax = "proto3";
+
+package messagepackage;
+option go_package = "github.com/Mind-thatsall/fiber-htmx/protobuf";
+
+message UserMessage {
+  string id = 1;
+  string content = 2;
+  string channelid = 3;
+  message Sender {
+      string id = 1;
+      string email = 2;
+      string username = 3;
+    }
+  Sender sender = 4;
+}

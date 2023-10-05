@@ -1,0 +1,19 @@
+{{template "partials/header" .}}
+
+<h1>{{ .Text }}</h1>
+{{if .User}}
+<p>Your ID is {{.User}}</p>
+{{end}}
+
+<ul id="server_list">
+  {{ range .Servers }}
+  <li><a href="/me/{{ .ServerId }}">{{ .Name }}</a></li>
+  {{ end }}
+</ul>
+
+<br>
+<form hx-post="/api/join_server" hx-target="#server_list" hx-swap="beforeend">
+  <input type="text" name="invitation_id" id="join_server_input" placeholder="ID of server">
+</form>
+
+{{template "partials/footer" .}}
