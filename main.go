@@ -12,9 +12,7 @@ import (
 )
 
 func main() {
-	app := fiber.New(fiber.Config{
-		Views: handlers.Engine,
-	})
+	app := fiber.New()
 
 	database.InitScyllaDB()
 	handlers.NewPresigner()

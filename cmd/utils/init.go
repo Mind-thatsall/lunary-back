@@ -1,14 +1,12 @@
 package utils
 
 import (
-	"bytes"
 	"fmt"
 
 	"github.com/Mind-thatsall/fiber-htmx/cmd/database"
 	"github.com/Mind-thatsall/fiber-htmx/cmd/models"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/log"
-	"github.com/gofiber/template/html/v2"
 )
 
 func GetServerInformations(serverId string) (models.Server, error) {
@@ -61,13 +59,4 @@ func GetChannelsIDFromServerUsingProps(serverId string) []string {
 	}
 
 	return channelsID
-}
-
-func RenderTemplate(engine *html.Engine, templateName string, informations fiber.Map) ([]byte, error) {
-	var buf bytes.Buffer
-	err := engine.Render(&buf, templateName, informations)
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }

@@ -51,6 +51,36 @@ func JoinServer(c *fiber.Ctx) error {
 	return c.JSON(serverInformations)
 }
 
+func join(c *fiber.Ctx, server models.Server, channelId string, db *gocql.Session) error {
+	userId := c.Locals("user_id")
+
+	queryJoinChannel := "INSERT INTO channel_to_users (channel_id, user_id) VALUES (?, ?)"
+	if err := db.Query(queryJoinChannel, channelId, userId).Exec(); err != nil {
+		log.Error(err)
+		return c.Status(500).JSON(fiber.Map{"error": "Couldn't join the server"})
+	}
+
+	queryJoinServer := "INSERT INTO server_to_users (server_id, user_id) VALUES (?, ?)"
+	if err := db.Query(queryJoinServer, server.ServerId, userId).Exec(); err != nil {
+		log.Error(err)
+		return c.Status(500).JSON(fiber.Map{"error": "Couldn't join the server"})
+	}
+
+	queryJoinUserServerList := "INSERT INTO user_to_servers (user_id, server_id) VALUES (?, ?)"
+	if err := db.Query(queryJoinUserServerList, userId, server.ServerId).Exec(); err != nil {
+		log.Error(err)
+		return c.Status(500).JSON(fiber.Map{"error": "Couldn't join the server"})
+	}
+
+	queryAddUserServerState := "INSERT INTO user_to_server_state (user_id, server_id, last_channel_id) VALUES (?, ?, ?)"
+	if err := db.Query(queryAddUserServerState, userId, server.ServerId, channelId).Exec(); err != nil {
+		log.Error(err)
+		return c.Status(500).JSON(fiber.Map{"error": "Couldn't join the server"})
+	}
+
+	return nil
+}
+
 func GetServersOfUser(c *fiber.Ctx) error {
 	db := database.DB
 	var serverIds []string
@@ -145,4 +175,40 @@ func GetServerState(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(servers_state)
+}
+
+func CreateServer(c *fiber.Ctx) error {
+	db := database.DB
+	userId := c.Locals("user_id")
+	var server models.Server
+
+	err := c.BodyParser(&server)
+	if err != nil {
+		log.Errorf("Error when parsing the body: %v", err)
+		return c.Status(422).JSON(fiber.Map{"error": "Error when parsing the server's informations"})
+	}
+
+	channelId := utils.GenerateNanoid()
+	serverId := utils.GenerateNanoid()
+
+	server.ServerId = serverId
+
+	queryCreateServer := "INSERT INTO servers (server_id, banner, description, name, owner, status) VALUES (?, ?, ?, ?, ?, ?)"
+	if err := db.Query(queryCreateServer, server.ServerId, server.Banner, server.Description, server.Name, userId, server.Status).Exec(); err != nil {
+		log.Error(err)
+		return c.Status(500).JSON(fiber.Map{"error": "Couldn't create the server"})
+	}
+
+	queryCreateChannel := "INSERT INTO channels (server_id, channel_id, group, name, type) VALUES (?, ?, ?, ?, ?)"
+	if err := db.Query(queryCreateChannel, serverId, channelId, "Home", "General", "textual").Exec(); err != nil {
+		log.Error(err)
+		return c.Status(500).JSON(fiber.Map{"error": "Couldn't create a new channel"})
+	}
+
+	errorJoin := join(c, server, channelId, db)
+	if errorJoin != nil {
+		return errorJoin
+	}
+
+	return nil
 }
