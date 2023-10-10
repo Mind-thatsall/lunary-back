@@ -40,7 +40,7 @@ type Message struct {
 	Content   string     `db:"content" json:"content"`
 	User      User       `db:"-" json:"sender"`
 	UserId    gocql.UUID `db:"user_id" json:"-"`
-	CreatedAt time.Time  `db:"created_at" json:"created_at"`
+	CreatedAt time.Time  `db:"created_at" json:"createdAt"`
 }
 
 type Server struct {

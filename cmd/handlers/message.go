@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Mind-thatsall/fiber-htmx/cmd/database"
 	"github.com/Mind-thatsall/fiber-htmx/cmd/models"
@@ -11,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/log"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func NewMessage(c *fiber.Ctx) error {
@@ -29,6 +31,9 @@ func NewMessage(c *fiber.Ctx) error {
 	message.MessageId = gocql.MustRandomUUID()
 	message.ChannelId = channelId
 	message.ServerId = serverId
+	t := time.Now()
+	timestamp := timestamppb.New(t)
+	message.CreatedAt = t
 
 	q := db.Query("INSERT INTO messages (message_id, channel_id, content, created_at, sender_id, server_id) VALUES (?, ?, ?, ?, ?, ?)", message.MessageId, message.ChannelId, message.Content, message.CreatedAt, message.User.Id, message.ServerId)
 	if err := q.Exec(); err != nil {
@@ -37,7 +42,7 @@ func NewMessage(c *fiber.Ctx) error {
 
 	users := getAllUsersFromChannel(message.ChannelId, db)
 
-	broadcastMessage(message.User, users, message)
+	broadcastMessage(message.User, users, message, timestamp)
 
 	return nil
 }
@@ -59,7 +64,7 @@ func getAllUsersFromChannel(channelId string, db *gocql.Session) []gocql.UUID {
 	return users
 }
 
-func broadcastMessage(sender models.User, users []gocql.UUID, message models.Message) {
+func broadcastMessage(sender models.User, users []gocql.UUID, message models.Message, timestamp *timestamppb.Timestamp) {
 
 	messageSender := &protobuf.UserMessage_Sender{
 		Id:       sender.Id.String(),
@@ -71,6 +76,7 @@ func broadcastMessage(sender models.User, users []gocql.UUID, message models.Mes
 		Id:        message.MessageId.String(),
 		Content:   message.Content,
 		Channelid: message.ChannelId,
+		CreatedAt: timestamp,
 		Sender:    messageSender,
 	}
 
@@ -100,7 +106,7 @@ func GetMessageFromChannel(c *fiber.Ctx) error {
 		var message models.Message
 		var user models.User
 
-		err := scanner.Scan(&message.ChannelId, &message.MessageId, &message.Content, &message.CreatedAt, &message.UserId, &message.ServerId)
+		err := scanner.Scan(&message.ChannelId, &message.CreatedAt, &message.MessageId, &message.Content, &message.UserId, &message.ServerId)
 		if err != nil {
 			log.Error(err)
 		}

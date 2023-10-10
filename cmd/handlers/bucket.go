@@ -8,6 +8,7 @@ import (
 
 	"github.com/Mind-thatsall/fiber-htmx/cmd/database"
 	"github.com/Mind-thatsall/fiber-htmx/cmd/env"
+	"github.com/Mind-thatsall/fiber-htmx/cmd/utils"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -58,16 +59,32 @@ func PutObjectInS3Bucket(c *fiber.Ctx) error {
 	folder := c.Params("folder")
 	media := c.Params("media")
 	version := c.Params("version")
-	userId := c.Locals("user_id").(string)
+	entity := c.Params("entity")
 
-	objectKey := fmt.Sprintf("%s/%s_%s_v%s.webp", folder, media, userId, version)
+	var objectKey string
+	var serverId string
+	var userId string
+	if entity == "user" {
+		userId = c.Locals("user_id").(string)
+		objectKey = fmt.Sprintf("%s/%s_%s_v%s.webp", folder, media, userId, version)
+	} else {
+		serverId = utils.GenerateNanoid()
+		objectKey = fmt.Sprintf("%s/%s_%s_v%s.webp", folder, media, serverId, version)
+	}
 
 	url, err := PresignerClient.PutObject(bucketName, objectKey)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't create the presigned URL"})
 	}
 
-	return c.Status(200).JSON(fiber.Map{"url": url})
+	var finalObject fiber.Map
+	if entity == "user" {
+		finalObject = fiber.Map{"url": url}
+	} else {
+		finalObject = fiber.Map{"url": url, "server_id": serverId}
+	}
+
+	return c.Status(200).JSON(finalObject)
 }
 
 func UpdateMediaForUser(c *fiber.Ctx) error {
