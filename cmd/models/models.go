@@ -23,7 +23,7 @@ type User struct {
 	About       string     `db:"about" json:"about"`
 	Avatar      string     `db:"avatar" json:"avatar"`
 	Banner      string     `db:"banner" json:"banner"`
-	DisplayName string     `db:"displayname" json:"display_name"`
+	DisplayName string     `db:"displayname" json:"displayName"`
 	Password    string     `db:"password" json:"-"`
 }
 
@@ -44,7 +44,7 @@ type Message struct {
 }
 
 type Server struct {
-	ServerId    string     `db:"server_id" json:"server_id"`
+	ServerId    string     `db:"server_id" json:"serverId"`
 	Banner      string     `db:"banner" json:"banner"`
 	Description string     `db:"description" json:"description"`
 	Name        string     `db:"name" json:"name"`
@@ -55,11 +55,18 @@ type Server struct {
 type ServerState map[string]string
 
 type Channel struct {
-	ServerId  string `db:"server_id" json:"server_id"`
-	ChannelId string `db:"channel_id" json:"channel_id"`
-	Group     string `db:"group" json:"group"`
-	Name      string `db:"name" json:"name"`
-	Type      string `db:"type" json:"type"`
+	ServerId  string     `db:"server_id" json:"serverId"`
+	ChannelId string     `db:"channel_id" json:"channelId"`
+	Category  gocql.UUID `db:"group" json:"group"`
+	Name      string     `db:"name" json:"name"`
+	Status    string     `db:"status" json:"status"`
+	Type      string     `db:"type" json:"type"`
+}
+
+type Category struct {
+	ServerId   string     `db:"server_id"`
+	CategoryId gocql.UUID `db:"category_id"`
+	Name       string     `db:"name"`
 }
 
 type Invitation struct {

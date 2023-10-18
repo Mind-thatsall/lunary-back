@@ -18,6 +18,7 @@ import (
 func NewMessage(c *fiber.Ctx) error {
 	var message models.Message
 	db := database.DB
+	var users []gocql.UUID
 
 	err := c.BodyParser(&message)
 	if err != nil {
@@ -28,9 +29,11 @@ func NewMessage(c *fiber.Ctx) error {
 	channelId := c.Params("channelId")
 	serverId := c.Params("serverId")
 
-	message.MessageId = gocql.MustRandomUUID()
 	message.ChannelId = channelId
 	message.ServerId = serverId
+	users = getAllUsersFromChannel(message.ChannelId, db)
+
+	message.MessageId = gocql.MustRandomUUID()
 	t := time.Now()
 	timestamp := timestamppb.New(t)
 	message.CreatedAt = t
@@ -40,7 +43,54 @@ func NewMessage(c *fiber.Ctx) error {
 		log.Errorf("Error when creating the user: %v", err)
 	}
 
-	users := getAllUsersFromChannel(message.ChannelId, db)
+	broadcastMessage(message.User, users, message, timestamp)
+
+	return nil
+}
+
+func NewDM(c *fiber.Ctx) error {
+	var message models.Message
+	db := database.DB
+	var users []gocql.UUID
+
+	err := c.BodyParser(&message)
+	if err != nil {
+		log.Errorf("Error when parsing the body: %v", err)
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "Error when sending the message"})
+	}
+
+	channelId := c.Params("channelId")
+	querySub := "SELECT user_id FROM channel_to_users WHERE channel_id = ?"
+	scanner := db.Query(querySub, channelId).Iter().Scanner()
+	for scanner.Next() {
+		var user_id gocql.UUID
+		err := scanner.Scan(&user_id)
+		if err != nil {
+			log.Error(err)
+		}
+
+		if user_id != message.User.Id {
+			users = append(users, user_id)
+			err := isFriend(c, db, message.User.Id, user_id)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	users = append(users, message.User.Id)
+
+	message.ChannelId = channelId
+
+	message.MessageId = gocql.MustRandomUUID()
+	t := time.Now()
+	timestamp := timestamppb.New(t)
+	message.CreatedAt = t
+
+	q := db.Query("INSERT INTO messages (message_id, channel_id, content, created_at, sender_id, server_id) VALUES (?, ?, ?, ?, ?, ?)", message.MessageId, message.ChannelId, message.Content, message.CreatedAt, message.User.Id, message.ServerId)
+	if err := q.Exec(); err != nil {
+		log.Errorf("Error when creating the user: %v", err)
+	}
 
 	broadcastMessage(message.User, users, message, timestamp)
 
@@ -67,17 +117,24 @@ func getAllUsersFromChannel(channelId string, db *gocql.Session) []gocql.UUID {
 func broadcastMessage(sender models.User, users []gocql.UUID, message models.Message, timestamp *timestamppb.Timestamp) {
 
 	messageSender := &protobuf.UserMessage_Sender{
-		Id:       sender.Id.String(),
-		Email:    sender.Email,
-		Username: sender.Username,
+		Id:          sender.Id.String(),
+		Email:       sender.Email,
+		Username:    sender.Username,
+		DisplayName: sender.DisplayName,
+		Avatar:      sender.Avatar,
 	}
 
-	messageToSend := &protobuf.UserMessage{
-		Id:        message.MessageId.String(),
-		Content:   message.Content,
-		Channelid: message.ChannelId,
-		CreatedAt: timestamp,
-		Sender:    messageSender,
+	messageToSend := &protobuf.ServerMessage{
+		Type: "message",
+		Payload: &protobuf.ServerMessage_UserMessage{
+			UserMessage: &protobuf.UserMessage{
+				Id:        message.MessageId.String(),
+				Content:   message.Content,
+				ChannelId: message.ChannelId,
+				CreatedAt: timestamp,
+				Sender:    messageSender,
+			},
+		},
 	}
 
 	data, err := proto.Marshal(messageToSend)
@@ -121,4 +178,14 @@ func GetMessageFromChannel(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(messages)
+}
+
+func isFriend(c *fiber.Ctx, db *gocql.Session, userId interface{}, friendId gocql.UUID) error {
+	queryCheckFriend := db.Query("SELECT friend_id FROM friends WHERE user_id = ? AND friend_id = ?", userId, friendId)
+	if err := queryCheckFriend.Scan(&friendId); err != nil {
+		log.Error(err)
+		return c.Status(500).JSON(fiber.Map{"error": "The two users are not friends"})
+	}
+
+	return nil
 }

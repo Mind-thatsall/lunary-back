@@ -5,15 +5,64 @@ import "google/protobuf/timestamp.proto";
 package messagepackage;
 option go_package = "github.com/Mind-thatsall/fiber-htmx/protobuf";
 
+message ServerMessage {
+  string type = 1;
+
+  oneof payload {
+    UserMessage userMessage = 2;
+    ServerDeletion serverDeletion = 3;
+    ServerJoin serverJoin = 4;
+    NewChannel newChannel = 5;
+    ChannelDeletion channelDeletion = 6;
+  }
+}
+
 message UserMessage {
   string id = 1;
   string content = 2;
-  string channelid = 3;
-  google.protobuf.Timestamp created_at = 4 [json_name = "created_at"];
+  string channelId = 3;
+  google.protobuf.Timestamp created_at = 4;
   Sender sender = 5;
   message Sender {
       string id = 1;
       string email = 2;
       string username = 3;
+      string display_name = 4;
+      string avatar = 5;
     }
+}
+
+message ServerDeletion {
+  string id = 1;
+}
+
+message ServerJoin {
+    string userId = 1;
+    Server server = 2;
+    message Server {
+      string serverId = 1;   
+      string banner = 2;
+      string description = 3;
+      string name = 4;
+      string owner = 5;
+      string status = 6;
+    }
+}
+
+message ChannelDeletion {
+  string channelId = 1;
+  string category = 2;
+}
+
+message NewChannel {
+  string group = 1;
+  Channel channel = 2;
+  message Channel {
+    string channelId = 1;
+    string group = 2;
+    string name = 3;
+    string serverId = 4;
+    string status = 5;
+    string type = 6;
+  }
 }
