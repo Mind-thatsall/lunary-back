@@ -14,7 +14,7 @@ func GetServerInformations(serverId string) (models.Server, error) {
 	var server models.Server
 
 	query := "select * from servers where server_id = ?"
-	if err := db.Query(query, serverId).Scan(&server.ServerId, &server.Banner, &server.Description, &server.Name, &server.Owner, &server.Status); err != nil {
+	if err := db.Query(query, serverId).Scan(&server.ServerId, &server.CreatedAt, &server.Banner, &server.Description, &server.Name, &server.Owner, &server.Status); err != nil {
 		log.Error(err)
 	}
 

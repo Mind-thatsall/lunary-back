@@ -9,6 +9,7 @@ import (
 	"github.com/Mind-thatsall/fiber-htmx/cmd/database"
 	"github.com/Mind-thatsall/fiber-htmx/cmd/env"
 	"github.com/Mind-thatsall/fiber-htmx/cmd/models"
+	"github.com/Mind-thatsall/fiber-htmx/cmd/utils"
 	"github.com/gocql/gocql"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/log"
@@ -118,8 +119,10 @@ func GetUserById(id interface{}) (models.User, error) {
 
 func Login(c *fiber.Ctx) error {
 	type LoginInput struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email     string `json:"email"`
+		Password  string `json:"password"`
+		Timezone  string `json:"timezone"`
+		UserAgent string `json:"user_agent"`
 	}
 
 	input := new(LoginInput)
@@ -131,18 +134,34 @@ func Login(c *fiber.Ctx) error {
 
 	userData, err := getUserByEmail(input.Email)
 	if err != nil {
-		return c.Status(404).Send([]byte("User not found"))
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	fmt.Println(userData.Password)
-
 	if !checkHashedPassword(userData.Password, input.Password) {
-		return c.Status(fiber.StatusUnauthorized).Send([]byte("Your email or password is invalid"))
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Your email or password is invalid"})
+	}
+
+	var session models.Session
+
+	session.SessionId = utils.GenerateNanoid()
+	session.UserId = userData.Id
+	session.Timezone = input.Timezone
+	session.UserAgent = input.UserAgent
+
+	db := database.DB
+
+	queryInsertSession := "INSERT INTO sessions (session_id, user_id, timezone, user_agent) VALUES (?, ?, ?, ?) ;"
+	if err := db.Query(queryInsertSession, session.SessionId, session.UserId, session.Timezone, session.UserAgent).Exec(); err != nil {
+		log.Error(err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Unable to log in the user."})
 	}
 
 	token := jwt.New(jwt.SigningMethodHS256)
 	claims := token.Claims.(jwt.MapClaims)
-	claims["user_id"] = userData.Id
+	claims["session_id"] = session.SessionId
+	claims["user_id"] = session.UserId
+	claims["timezone"] = session.Timezone
+	claims["user_agent"] = session.UserAgent
 	claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
 
 	t, err := token.SignedString([]byte(env.Variable("SECRET")))
@@ -151,15 +170,16 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	cookie := new(fiber.Cookie)
-	cookie.Name = "jwt"
+	cookie.Name = "session"
 	cookie.Value = t
 	cookie.HTTPOnly = true
 	cookie.Expires = time.Now().Add(time.Hour * 72)
 	cookie.SameSite = "None"
+	cookie.Secure = true
+	cookie.Path = "/"
 
 	c.Cookie(cookie)
-	c.Status(fiber.StatusOK).JSON(userData)
-	return nil
+	return c.Status(fiber.StatusOK).JSON(userData)
 }
 
 func CheckUserAuthenticity(c *fiber.Ctx) error {

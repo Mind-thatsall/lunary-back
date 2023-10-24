@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/Mind-thatsall/fiber-htmx/cmd/database"
 	"github.com/Mind-thatsall/fiber-htmx/cmd/models"
@@ -65,15 +67,15 @@ func JoinServer(c *fiber.Ctx) error {
 		}
 	}
 
-	queryJoinServer := "INSERT INTO server_to_users (server_id, user_id) VALUES (?, ?)"
-	if err := db.Query(queryJoinServer, serverId, userId).Exec(); err != nil {
+	queryJoinServer := "UPDATE server_to_users SET users = users + ? WHERE server_id = ?"
+	if err := db.Query(queryJoinServer, []string{userId}, serverId).Exec(); err != nil {
 		RollbackQueries(db)
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't join the server"})
 	}
 
-	queryJoinUsersServerList := "INSERT INTO user_to_servers (user_id, server_id) VALUES (?, ?)"
-	if err := db.Query(queryJoinUsersServerList, userId, serverId).Exec(); err != nil {
+	queryJoinUsersServerList := "UPDATE user_to_servers SET servers = servers + ? WHERE user_id = ?"
+	if err := db.Query(queryJoinUsersServerList, []string{serverId}, userId).Exec(); err != nil {
 		RollbackQueries(db)
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't join the server"})
@@ -86,21 +88,15 @@ func JoinServer(c *fiber.Ctx) error {
 	}
 
 	queryServerInformations := "SELECT * FROM servers WHERE server_id = ?"
-	if err := db.Query(queryServerInformations, serverId).Scan(&serverInformations.ServerId, &serverInformations.Banner, &serverInformations.Description, &serverInformations.Name, &serverInformations.Owner, &serverInformations.Status); err != nil {
+	if err := db.Query(queryServerInformations, serverId).Scan(&serverInformations.ServerId, &serverInformations.CreatedAt, &serverInformations.Banner, &serverInformations.Description, &serverInformations.Name, &serverInformations.Owner, &serverInformations.Status); err != nil {
 		log.Error(err)
 	}
 
 	var users []gocql.UUID
-	queryGetUsersOfServer := "SELECT user_id FROM server_to_users WHERE server_id = ?"
-	scannerUsers := db.Query(queryGetUsersOfServer, serverId).Iter().Scanner()
-	for scannerUsers.Next() {
-		var userId gocql.UUID
-		err := scannerUsers.Scan(&userId)
-		if err != nil {
-			log.Error(err)
-			return c.Status(404).JSON(fiber.Map{"error": "Couldn't find the user"})
-		}
-		users = append(users, userId)
+	queryGetUsersOfServer := "SELECT users FROM server_to_users WHERE server_id = ?"
+	if err := db.Query(queryGetUsersOfServer, serverId).Scan(&users); err != nil {
+		log.Error(err)
+		return c.Status(500).JSON(fiber.Map{"error": "An error occured while leaving the server"})
 	}
 
 	broadcastServerChanges(users, Options{UserId: &userId, Server: &serverInformations}, "server_join")
@@ -120,15 +116,9 @@ func GetServersOfUser(c *fiber.Ctx) error {
 		log.Error("Error when parsing to UUID", err)
 	}
 
-	querySub := "SELECT server_id FROM user_to_servers WHERE user_id = ?"
-	scanner := db.Query(querySub, userId).Iter().Scanner()
-	for scanner.Next() {
-		var serverId string
-		err := scanner.Scan(&serverId)
-		if err != nil {
-			log.Error(err)
-		}
-		serverIds = append(serverIds, serverId)
+	querySub := "SELECT servers FROM user_to_servers WHERE user_id = ?"
+	if err := db.Query(querySub, userId).Scan(&serverIds); err != nil {
+		log.Error(err)
 	}
 
 	for _, serverId := range serverIds {
@@ -267,7 +257,7 @@ func GetServerState(c *fiber.Ctx) error {
 
 func CreateServer(c *fiber.Ctx) error {
 	db := database.DB
-	userId := c.Locals("user_id")
+	userId := c.Locals("user_id").(string)
 	var server models.Server
 
 	err := c.BodyParser(&server)
@@ -280,9 +270,12 @@ func CreateServer(c *fiber.Ctx) error {
 	serverId := utils.GenerateNanoid()
 
 	server.ServerId = serverId
+	server.Banner = "https://d2b2cq6cks3j1i.cloudfront.net/server_banner/banner_" + serverId + "_v1.webp"
 
-	queryCreateServer := "INSERT INTO servers (server_id, banner, description, name, owner, status) VALUES (?, ?, ?, ?, ?, ?)"
-	if err := db.Query(queryCreateServer, server.ServerId, server.Banner, server.Description, server.Name, userId, server.Status).Exec(); err != nil {
+	t := time.Now()
+
+	queryCreateServer := "INSERT INTO servers (server_id, created_at, banner, description, name, owner, status) VALUES (?, ?, ?, ?, ?, ?, ?)"
+	if err := db.Query(queryCreateServer, server.ServerId, t, server.Banner, server.Description, server.Name, userId, server.Status).Exec(); err != nil {
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't create the server"})
 	} else {
@@ -329,8 +322,8 @@ func CreateServer(c *fiber.Ctx) error {
 		}})
 	}
 
-	queryJoinServer := "INSERT INTO server_to_users (server_id, user_id) VALUES (?, ?)"
-	if err := db.Query(queryJoinServer, server.ServerId, userId).Exec(); err != nil {
+	queryJoinServer := "INSERT INTO server_to_users (server_id, users) VALUES (?, ?)"
+	if err := db.Query(queryJoinServer, server.ServerId, []string{userId}).Exec(); err != nil {
 		RollbackQueries(db)
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't join the server"})
@@ -340,15 +333,15 @@ func CreateServer(c *fiber.Ctx) error {
 		}})
 	}
 
-	queryJoinUserServerList := "INSERT INTO user_to_servers (user_id, server_id) VALUES (?, ?)"
-	if err := db.Query(queryJoinUserServerList, userId, server.ServerId).Exec(); err != nil {
+	queryJoinUserServerList := "UPDATE user_to_servers SET servers = servers + ? WHERE user_id = ?"
+	if err := db.Query(queryJoinUserServerList, []string{server.ServerId}, userId).Exec(); err != nil {
 		RollbackQueries(db)
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't join the server"})
 	} else {
-		rollback = append(rollback, Deletion{Query: "DELETE FROM user_to_servers WHERE user_id = ? AND server_id = ?", Args: []interface{}{
+		rollback = append(rollback, Deletion{Query: "UPDATE users_to_servers SET servers = servers - ? WHERE user_id = ?", Args: []interface{}{
+			[]string{server.ServerId},
 			userId,
-			server.ServerId,
 		}})
 	}
 
@@ -359,7 +352,7 @@ func CreateServer(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't join the server"})
 	}
 
-	return nil
+	return c.JSON(serverId)
 }
 
 func RollbackQueries(db *gocql.Session) {
@@ -388,7 +381,7 @@ func DeleteServer(c *fiber.Ctx) error {
 	}
 
 	queryGetServer := "SELECT * FROM servers WHERE server_id = ?"
-	if err := db.Query(queryGetServer, serverId.Id).Scan(&server.ServerId, &server.Banner, &server.Description, &server.Name, &server.Owner, &server.Status); err != nil {
+	if err := db.Query(queryGetServer, serverId.Id).Scan(&server.ServerId, &server.CreatedAt, &server.Banner, &server.Description, &server.Name, &server.Owner, &server.Status); err != nil {
 		log.Error(err)
 		return c.Status(404).JSON(fiber.Map{"error": "The server you're trying to delete does not exist."})
 	}
@@ -425,16 +418,10 @@ func DeleteServer(c *fiber.Ctx) error {
 		}
 	}
 
-	queryGetUsersOfServer := "SELECT user_id FROM server_to_users WHERE server_id = ?"
-	scannerUsers := db.Query(queryGetUsersOfServer, serverId.Id).Iter().Scanner()
-	for scannerUsers.Next() {
-		var userId gocql.UUID
-		err := scannerUsers.Scan(&userId)
-		if err != nil {
-			log.Error(err)
-			return c.Status(404).JSON(fiber.Map{"error": "Error when fetching users for deletion"})
-		}
-		users = append(users, userId)
+	queryGetUsersOfServer := "SELECT users FROM server_to_users WHERE server_id = ?"
+	if err := db.Query(queryGetUsersOfServer, serverId.Id).Scan(&users); err != nil {
+		log.Error(err)
+		return c.Status(500).JSON(fiber.Map{"error": "An error occured while leaving the server"})
 	}
 
 	queryDeleteServerListOfUsers := "DELETE FROM server_to_users WHERE server_id = ?"
@@ -443,10 +430,10 @@ func DeleteServer(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't delete the list of users related to this server."})
 	}
 
-	queryDeleteServerFromUsersList := "DELETE FROM user_to_servers WHERE user_id = ? AND server_id = ?"
+	queryDeleteServerFromUsersList := "UPDATE user_to_servers SET servers = servers - ? WHERE user_id = ?"
 	queryDeleteUserState := "DELETE FROM user_to_server_state WHERE user_id = ? AND server_id = ?"
 	for _, userId := range users {
-		if err := db.Query(queryDeleteServerFromUsersList, userId, serverId.Id).Exec(); err != nil {
+		if err := db.Query(queryDeleteServerFromUsersList, []string{serverId.Id}, userId).Exec(); err != nil {
 			log.Error(err)
 			return c.Status(500).JSON(fiber.Map{"error": "Can't delete user from server."})
 		}
@@ -463,7 +450,7 @@ func DeleteServer(c *fiber.Ctx) error {
 }
 
 func LeaveServer(c *fiber.Ctx) error {
-	userId := c.Locals("user_id")
+	userId := c.Locals("user_id").(string)
 	db := database.DB
 
 	type BodyRequest struct {
@@ -507,31 +494,20 @@ func LeaveServer(c *fiber.Ctx) error {
 	}
 
 	var users []gocql.UUID
-	queryGetUsersOfServer := "SELECT user_id FROM server_to_users WHERE server_id = ?"
-	scannerUsers := db.Query(queryGetUsersOfServer, serverId).Iter().Scanner()
-	for scannerUsers.Next() {
-		var userId gocql.UUID
-		err := scannerUsers.Scan(&userId)
-		fmt.Println(userId)
-		if err != nil {
-			log.Error(err)
-			return c.Status(404).JSON(fiber.Map{"error": "Couldn't find the user"})
-		}
-		users = append(users, userId)
-	}
-
-	queryLeaveServer := "DELETE FROM server_to_users WHERE server_id = ? AND user_id = ?"
-	if err := db.Query(queryLeaveServer, serverId, userId).Exec(); err != nil {
+	queryGetUsersOfServer := "SELECT users FROM server_to_users WHERE server_id = ?"
+	if err := db.Query(queryGetUsersOfServer, serverId).Scan(&users); err != nil {
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "An error occured while leaving the server"})
 	}
 
-	if err := scannerUsers.Err(); err != nil {
+	queryLeaveServer := "UPDATE server_to_users SET users = users - ? WHERE server_id = ?"
+	if err := db.Query(queryLeaveServer, []string{userId}, serverId).Exec(); err != nil {
 		log.Error(err)
+		return c.Status(500).JSON(fiber.Map{"error": "An error occured while leaving the server"})
 	}
 
-	queryDeleteServerFromUsersList := "DELETE FROM user_to_servers WHERE user_id = ? AND server_id = ?"
-	if err := db.Query(queryDeleteServerFromUsersList, userId, serverId).Exec(); err != nil {
+	queryDeleteServerFromUsersList := "UPDATE user_to_servers SET servers = servers - ? WHERE user_id = ?"
+	if err := db.Query(queryDeleteServerFromUsersList, []string{serverId}, userId).Exec(); err != nil {
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "An error occured while leaving the server"})
 	}
@@ -564,23 +540,17 @@ func CreateChannel(c *fiber.Ctx) error {
 	newChannel := body.Channel
 	newChannel.ChannelId = utils.GenerateNanoid()
 
-	queryCreateChannel := "INSERT INTO channels (server_id, channel_id, group, name, status, type) VALUES (?, ?, ?, ?, ?, ?)"
-	if err := db.Query(queryCreateChannel, newChannel.ServerId, newChannel.ChannelId, newChannel.Category, newChannel.Name, newChannel.Status, newChannel.Type).Exec(); err != nil {
+	queryCreateChannel := "INSERT INTO channels_test (server_id, channel_id, group, name, parent_id, parent_position, position, status, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	if err := db.Query(queryCreateChannel, newChannel.ServerId, newChannel.ChannelId, newChannel.Category, newChannel.Name, newChannel.ParentId, newChannel.ParentPosition, newChannel.Position, newChannel.Status, newChannel.Type).Exec(); err != nil {
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't create the new channel"})
 	}
 
 	var users []gocql.UUID
-	queryGetAllUsers := "SELECT user_id FROM server_to_users WHERE server_id = ?"
-	scannerUsers := db.Query(queryGetAllUsers, newChannel.ServerId).Iter().Scanner()
-	for scannerUsers.Next() {
-		var userId gocql.UUID
-		err := scannerUsers.Scan(&userId)
-		if err != nil {
-			log.Error(err)
-			return c.Status(404).JSON(fiber.Map{"error": "Couldn't find the user"})
-		}
-		users = append(users, userId)
+	queryGetUsersOfServer := "SELECT users FROM server_to_users WHERE server_id = ?"
+	if err := db.Query(queryGetUsersOfServer, newChannel.ServerId).Scan(&users); err != nil {
+		log.Error(err)
+		return c.Status(500).JSON(fiber.Map{"error": "An error occured while leaving the server"})
 	}
 
 	for _, user := range users {
@@ -611,7 +581,7 @@ func DeleteChannel(c *fiber.Ctx) error {
 		return c.Status(422).JSON(fiber.Map{"error": "Error when parsing the server's informations"})
 	}
 
-	queryDeleteChannel := "DELETE FROM channels WHERE server_id = ? AND channel_id = ?"
+	queryDeleteChannel := "DELETE FROM channels_test WHERE server_id = ? AND channel_id = ?"
 	if err := db.Query(queryDeleteChannel, body.ServerId, body.ChannelId).Exec(); err != nil {
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't delete the channel"})
@@ -676,12 +646,16 @@ func broadcastServerChanges(users []gocql.UUID, opts Options, typeOfMessage stri
 			Payload: &protobuf.ServerMessage_NewChannel{
 				NewChannel: &protobuf.NewChannel{
 					Group: *opts.Group,
-					Channel: &protobuf.NewChannel_Channel{
-						ChannelId: opts.Channel.ChannelId,
-						Group:     opts.Channel.Category.String(),
-						Name:      opts.Channel.Name,
-						ServerId:  opts.Channel.ServerId,
-						Status:    opts.Channel.Status,
+					Channel: &protobuf.Channel{
+						ServerId:       opts.Channel.ServerId,
+						ChannelId:      opts.Channel.ChannelId,
+						Category:       opts.Channel.Category,
+						Name:           opts.Channel.Name,
+						ParentId:       opts.Channel.ParentId,
+						ParentPosition: strconv.Itoa(opts.Channel.ParentPosition),
+						Position:       strconv.Itoa(opts.Channel.Position),
+						Status:         opts.Channel.Status,
+						Type:           opts.Channel.Type,
 					},
 				},
 			},
@@ -704,7 +678,7 @@ func broadcastServerChanges(users []gocql.UUID, opts Options, typeOfMessage stri
 			Payload: &protobuf.ServerMessage_ServerJoin{
 				ServerJoin: &protobuf.ServerJoin{
 					UserId: *opts.UserId,
-					Server: &protobuf.ServerJoin_Server{
+					Server: &protobuf.Server{
 						ServerId:    *&opts.Server.ServerId,
 						Banner:      opts.Server.Banner,
 						Description: opts.Server.Description,

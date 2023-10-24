@@ -12,7 +12,7 @@ import (
 func SetupRoutes(app *fiber.App) {
 	var JWTMiddleware = middleware.JWTAuthMiddleware(env.Variable("SECRET"))
 
-	app.Get("/ws/connect/:userId", websocket.New(handlers.Connect))
+	app.Get("/ws/connect", websocket.New(handlers.Connect))
 
 	// Middleware
 	api := app.Group("/api", logger.New())
@@ -33,11 +33,7 @@ func SetupRoutes(app *fiber.App) {
 	//
 	// User
 	user := api.Group("/user")
-	// user.Get("/:id", handler.GetUser)
 	user.Post("/", handlers.CreateUser)
 	user.Post("/login", handlers.Login)
-	user.Get("/check", handlers.CheckUserAuthenticity)
 	user.Get("/servers", JWTMiddleware, handlers.GetServersOfUser)
-	// user.Patch("/:id", middleware.Protected(), handler.UpdateUser)
-	// user.Delete("/:id", middleware.Protected(), handler.DeleteUser)
 }

@@ -28,7 +28,7 @@ func main() {
 	})
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:5173",
+		AllowOrigins:     "https://localhost:5173",
 		AllowHeaders:     "Origin, Content-Type, Accept, Set-Cookie",
 		AllowCredentials: true,
 	}))
@@ -36,5 +36,5 @@ func main() {
 	app.Static("/", "./public")
 
 	router.SetupRoutes(app)
-	log.Fatal(app.Listen("localhost:3000"))
+	log.Fatal(app.ListenTLS(":443", "./certificates/server.crt", "./certificates/server.key"))
 }

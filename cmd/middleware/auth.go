@@ -5,12 +5,13 @@ import (
 
 	"github.com/Mind-thatsall/fiber-htmx/cmd/handlers"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/golang-jwt/jwt/v5"
 )
 
 func JWTAuthMiddleware(secretKey string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		cookie := c.Cookies("jwt")
+		cookie := c.Cookies("session")
 
 		token, err := jwt.Parse(cookie, func(token *jwt.Token) (interface{}, error) {
 			// Validate the alg
@@ -21,6 +22,7 @@ func JWTAuthMiddleware(secretKey string) fiber.Handler {
 		})
 
 		if err != nil {
+			log.Error(err)
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 		}
 
@@ -32,6 +34,7 @@ func JWTAuthMiddleware(secretKey string) fiber.Handler {
 			} else {
 				_, err := handlers.GetUserById(userId)
 				if err != nil {
+					log.Error(err)
 					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 				}
 				c.Locals("user_id", claims["user_id"])

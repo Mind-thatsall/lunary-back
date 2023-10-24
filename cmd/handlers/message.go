@@ -116,7 +116,7 @@ func getAllUsersFromChannel(channelId string, db *gocql.Session) []gocql.UUID {
 
 func broadcastMessage(sender models.User, users []gocql.UUID, message models.Message, timestamp *timestamppb.Timestamp) {
 
-	messageSender := &protobuf.UserMessage_Sender{
+	messageSender := &protobuf.User{
 		Id:          sender.Id.String(),
 		Email:       sender.Email,
 		Username:    sender.Username,

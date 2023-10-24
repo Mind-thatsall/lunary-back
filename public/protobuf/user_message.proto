@@ -14,6 +14,8 @@ message ServerMessage {
     ServerJoin serverJoin = 4;
     NewChannel newChannel = 5;
     ChannelDeletion channelDeletion = 6;
+    InitialLoad initialLoad = 7;
+    ChangeServer changeServer = 8;
   }
 }
 
@@ -22,14 +24,7 @@ message UserMessage {
   string content = 2;
   string channelId = 3;
   google.protobuf.Timestamp created_at = 4;
-  Sender sender = 5;
-  message Sender {
-      string id = 1;
-      string email = 2;
-      string username = 3;
-      string display_name = 4;
-      string avatar = 5;
-    }
+  User sender = 5;
 }
 
 message ServerDeletion {
@@ -39,14 +34,6 @@ message ServerDeletion {
 message ServerJoin {
     string userId = 1;
     Server server = 2;
-    message Server {
-      string serverId = 1;   
-      string banner = 2;
-      string description = 3;
-      string name = 4;
-      string owner = 5;
-      string status = 6;
-    }
 }
 
 message ChannelDeletion {
@@ -57,12 +44,57 @@ message ChannelDeletion {
 message NewChannel {
   string group = 1;
   Channel channel = 2;
-  message Channel {
-    string channelId = 1;
-    string group = 2;
-    string name = 3;
-    string serverId = 4;
-    string status = 5;
-    string type = 6;
-  }
 }
+
+message InitialLoad {
+  User user = 1;
+  repeated Server servers = 2;
+  ServerInfos server = 3;
+}
+
+message ChangeServer {
+  ServerInfos server = 1;
+}
+
+message User {
+    string id = 1;
+    string email = 2;
+    string username = 3;
+    string about = 4;
+    string avatar = 5;
+    string banner = 6;
+    string displayName = 7;
+}
+
+
+message Server {
+    string serverId = 1;
+    string banner = 2;
+    string description = 3;
+    string name = 4;
+    string owner = 5;
+    string status = 6;
+}
+
+message ServerInfos {
+  repeated Categories categories = 1;
+
+}
+
+message Categories {
+  string groupName = 1;
+  repeated Channel channels = 2;
+}
+
+message Channel {
+  string serverId = 1;
+  string channelId = 2;
+  string category = 3;
+  string name = 4;
+  string parentId = 5;
+  string parentPosition = 6;
+  string position = 7;
+  string status = 8;
+  string type = 9;
+}
+

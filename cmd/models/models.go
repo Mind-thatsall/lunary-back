@@ -33,6 +33,13 @@ type Subscriber struct {
 	ChannelsId []gocql.UUID `db:"channels_id"`
 }
 
+type Session struct {
+	SessionId string     `db:"session_id"`
+	UserId    gocql.UUID `db:"user_id"`
+	Timezone  string     `db:"timezone"`
+	UserAgent string     `db:"user_agent"`
+}
+
 type Message struct {
 	MessageId gocql.UUID `db:"message_id" json:"id"`
 	ChannelId string     `db:"channel_id" json:"channel_id"`
@@ -45,6 +52,7 @@ type Message struct {
 
 type Server struct {
 	ServerId    string     `db:"server_id" json:"serverId"`
+	CreatedAt   time.Time  `db:"created_at" json:"createdAt"`
 	Banner      string     `db:"banner" json:"banner"`
 	Description string     `db:"description" json:"description"`
 	Name        string     `db:"name" json:"name"`
@@ -55,12 +63,15 @@ type Server struct {
 type ServerState map[string]string
 
 type Channel struct {
-	ServerId  string     `db:"server_id" json:"serverId"`
-	ChannelId string     `db:"channel_id" json:"channelId"`
-	Category  gocql.UUID `db:"group" json:"group"`
-	Name      string     `db:"name" json:"name"`
-	Status    string     `db:"status" json:"status"`
-	Type      string     `db:"type" json:"type"`
+	ServerId       string `db:"server_id" json:"serverId"`
+	ChannelId      string `db:"channel_id" json:"channelId"`
+	Category       string `db:"group" json:"group"`
+	Name           string `db:"name" json:"name"`
+	ParentId       string `db:"parent_id" json:"parentId"`
+	ParentPosition int    `db:"parent_position" json:"parentPosition"`
+	Position       int    `db:"position" json:"position"`
+	Status         string `db:"status" json:"status"`
+	Type           string `db:"type" json:"type"`
 }
 
 type Category struct {
