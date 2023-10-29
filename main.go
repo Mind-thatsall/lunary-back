@@ -1,9 +1,10 @@
 package main
 
 import (
-	"log"
+	"net/http"
 
 	"github.com/Mind-thatsall/fiber-htmx/cmd/database"
+	"github.com/Mind-thatsall/fiber-htmx/cmd/env"
 	"github.com/Mind-thatsall/fiber-htmx/cmd/handlers"
 	"github.com/Mind-thatsall/fiber-htmx/cmd/router"
 	"github.com/gofiber/contrib/websocket"
@@ -36,5 +37,15 @@ func main() {
 	app.Static("/", "./public")
 
 	router.SetupRoutes(app)
-	log.Fatal(app.ListenTLS(":443", "./certificates/server.crt", "./certificates/server.key"))
+	if env.Variable("MODE") == "DEV" {
+		err := app.ListenTLS(":443", "../certificates/localhost+2.pem", "../certificates/localhost+2-key.pem")
+		if err != nil {
+			panic("Failed to start server:" + err.Error())
+		}
+	} else if env.Variable("MODE") == "PRODUCTION" {
+		err := http.ListenAndServe(":80", nil)
+		if err != nil {
+			panic("Failed to start server:" + err.Error())
+		}
+	}
 }

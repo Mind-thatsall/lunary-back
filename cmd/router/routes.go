@@ -18,7 +18,6 @@ func SetupRoutes(app *fiber.App) {
 	api := app.Group("/api", logger.New())
 	api.Post("/new_message/:serverId/:channelId", JWTMiddleware, handlers.NewMessage)
 	api.Post("/new_dm/:channelId", JWTMiddleware, handlers.NewDM)
-	api.Get("/channels/:serverId", JWTMiddleware, handlers.GetChannelsFromServer)
 	api.Get("/messages/:channelId", JWTMiddleware, handlers.GetMessageFromChannel)
 	api.Get("/new_signed_url_s3/:entity/:bucketName/:folder/:media/:version", JWTMiddleware, handlers.PutObjectInS3Bucket)
 	api.Get("/update/:media/:version", JWTMiddleware, handlers.UpdateMediaForUser)

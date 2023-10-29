@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"net/mail"
 	"time"
 
@@ -86,19 +85,17 @@ func checkIfUserExist(username, email string, db *gocql.Session) error {
 
 func getUserByEmail(email string) (models.User, error) {
 	db := database.DB
-	var user models.User
 	var user_id gocql.UUID
 
 	queryUserId := "SELECT user_id FROM existing_email WHERE email = ?"
 	if err := db.Query(queryUserId, email).Scan(&user_id); err != nil {
 		log.Error(err)
-		return user, errors.New("User not found")
+		return models.User{}, errors.New("User not found")
 	}
 
-	queryUser := "SELECT * FROM users WHERE id = ?"
-	if err := db.Query(queryUser, user_id).Scan(&user.Id, &user.About, &user.Avatar, &user.Banner, &user.DisplayName, &user.Email, &user.Password, &user.Username); err != nil {
-		log.Error(err)
-		return user, errors.New("User not found")
+	user, err := GetUserById(user_id)
+	if err != nil {
+		return user, err
 	}
 
 	return user, nil
@@ -180,38 +177,4 @@ func Login(c *fiber.Ctx) error {
 
 	c.Cookie(cookie)
 	return c.Status(fiber.StatusOK).JSON(userData)
-}
-
-func CheckUserAuthenticity(c *fiber.Ctx) error {
-	cookie := c.Cookies("jwt")
-
-	token, err := jwt.Parse(cookie, func(token *jwt.Token) (interface{}, error) {
-		// Validate the alg
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-
-		return []byte(env.Variable("SECRET")), nil
-	})
-
-	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
-	}
-
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		userId := claims["user_id"]
-		if userId == nil {
-			// If there is no userId claim in the JWT token, return error
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
-		} else {
-			user, err := GetUserById(userId)
-			if err != nil {
-				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
-			}
-
-			return c.JSON(user)
-		}
-	} else {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
-	}
 }

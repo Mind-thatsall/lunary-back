@@ -50,6 +50,11 @@ message InitialLoad {
   User user = 1;
   repeated Server servers = 2;
   ServerInfos server = 3;
+  ServerStates map = 4;
+}
+
+message ServerStates {
+  map<string, string> map = 1;
 }
 
 message ChangeServer {

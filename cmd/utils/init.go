@@ -2,6 +2,8 @@ package utils
 
 import (
 	"fmt"
+	"math/rand"
+	"strconv"
 
 	"github.com/Mind-thatsall/fiber-htmx/cmd/database"
 	"github.com/Mind-thatsall/fiber-htmx/cmd/models"
@@ -59,4 +61,15 @@ func GetChannelsIDFromServerUsingProps(serverId string) []string {
 	}
 
 	return channelsID
+}
+
+func GenerateNanoid() string {
+	id := ""
+
+	for i := 0; i < 21; i++ {
+		num := rand.Intn(10)
+		id += strconv.Itoa(num)
+	}
+
+	return id
 }

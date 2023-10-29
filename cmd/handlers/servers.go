@@ -145,73 +145,6 @@ type PrivateChannel struct {
 	Type      string     `db:"type"`
 }
 
-func GetChannelsFromServer(c *fiber.Ctx) error {
-	db := database.DB
-	channels := make(ChannelsByCategory)
-	serverId := c.Params("serverId")
-	userId := c.Locals("user_id")
-
-	queryAllCategory := "SELECT * FROM categories WHERE server_id = ?"
-	scannerCategory := db.Query(queryAllCategory, serverId).Iter().Scanner()
-	for scannerCategory.Next() {
-		var category models.Category
-		err := scannerCategory.Scan(&category.ServerId, &category.CategoryId, &category.Name)
-		if err != nil {
-			log.Error(err)
-			return c.Status(404).JSON(fiber.Map{"error": "Error when fetching category"})
-		}
-
-		channels[category.Name] = channelMap{
-			GroupId:  category.CategoryId,
-			Channels: nil,
-		}
-	}
-
-	if err := scannerCategory.Err(); err != nil {
-		log.Error(err)
-	}
-
-	querySub := "SELECT * FROM channels WHERE server_id = ?"
-	queryCategory := "SELECT * FROM categories WHERE server_id = ? AND category_id = ?"
-	scanner := db.Query(querySub, serverId).Iter().Scanner()
-	for scanner.Next() {
-		var channel models.Channel
-		err := scanner.Scan(&channel.ServerId, &channel.ChannelId, &channel.Category, &channel.Name, &channel.Status, &channel.Type)
-		if err != nil {
-			log.Error(err)
-		}
-
-		var category models.Category
-		if err := db.Query(queryCategory, serverId, channel.Category).Scan(&category.ServerId, &category.CategoryId, &category.Name); err != nil {
-			log.Error(err)
-			return c.Status(404).JSON(fiber.Map{"error": "Error when fetching category"})
-		}
-
-		channelsCategory := channels[category.Name]
-
-		if channel.Status == "private" {
-			queryPrivateChannel := "SELECT * FROM private_channels WHERE channel_id = ? AND id = ?"
-			var privateChannel PrivateChannel
-
-			if err := db.Query(queryPrivateChannel, channel.ChannelId, userId).Scan(&privateChannel.ChannelId, &privateChannel.Id, &privateChannel.Type); err != nil {
-				log.Errorf("User not authorized in this channel")
-			} else {
-				channelsCategory.Channels = append(channelsCategory.Channels, channel)
-			}
-		} else {
-			channelsCategory.Channels = append(channelsCategory.Channels, channel)
-		}
-
-		channels[category.Name] = channelsCategory
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Error(err)
-	}
-
-	return c.JSON(channels)
-}
-
 func UpdateServerState(c *fiber.Ctx) error {
 	db := database.DB
 	var servers_state models.ServerState
@@ -259,6 +192,10 @@ func CreateServer(c *fiber.Ctx) error {
 	db := database.DB
 	userId := c.Locals("user_id").(string)
 	var server models.Server
+	userUUID, errParse := gocql.ParseUUID(userId)
+	if errParse != nil {
+		log.Error(errParse)
+	}
 
 	err := c.BodyParser(&server)
 	if err != nil {
@@ -271,11 +208,12 @@ func CreateServer(c *fiber.Ctx) error {
 
 	server.ServerId = serverId
 	server.Banner = "https://d2b2cq6cks3j1i.cloudfront.net/server_banner/banner_" + serverId + "_v1.webp"
+	server.Owner = userUUID
 
 	t := time.Now()
 
 	queryCreateServer := "INSERT INTO servers (server_id, created_at, banner, description, name, owner, status) VALUES (?, ?, ?, ?, ?, ?, ?)"
-	if err := db.Query(queryCreateServer, server.ServerId, t, server.Banner, server.Description, server.Name, userId, server.Status).Exec(); err != nil {
+	if err := db.Query(queryCreateServer, server.ServerId, t, server.Banner, server.Description, server.Name, server.Owner, server.Status).Exec(); err != nil {
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't create the server"})
 	} else {
@@ -300,8 +238,8 @@ func CreateServer(c *fiber.Ctx) error {
 		}})
 	}
 
-	queryCreateChannel := "INSERT INTO channels (server_id, channel_id, group, name, status, type) VALUES (?, ?, ?, ?, ?, ?)"
-	if err := db.Query(queryCreateChannel, serverId, channelId, categoryId, "General", "public", "textual").Exec(); err != nil {
+	queryCreateChannel := "INSERT INTO channels (server_id, channel_id, group, name, parent_id, parent_position, position, status, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	if err := db.Query(queryCreateChannel, serverId, channelId, "Home", "General", channelId, 0, 0, "public", "textual").Exec(); err != nil {
 		RollbackQueries(db)
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't create a new channel"})
@@ -352,6 +290,7 @@ func CreateServer(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't join the server"})
 	}
 
+	broadcastServerChanges([]gocql.UUID{userUUID}, Options{UserId: &userId, Server: &server}, "server_creation")
 	return c.JSON(serverId)
 }
 
@@ -390,7 +329,7 @@ func DeleteServer(c *fiber.Ctx) error {
 	scanner := db.Query(queryGetChannels, serverId.Id).Iter().Scanner()
 	for scanner.Next() {
 		var channel models.Channel
-		err := scanner.Scan(&channel.ServerId, &channel.ChannelId, &channel.Category, &channel.Name, &channel.Status, &channel.Type)
+		err := scanner.Scan(&channel.ServerId, &channel.ChannelId, &channel.Category, &channel.Name, &channel.ParentId, &channel.ParentPosition, &channel.Position, &channel.Status, &channel.Type)
 		if err != nil {
 			log.Error(err)
 			return c.Status(404).JSON(fiber.Map{"error": "Can't find any channels in this server."})
@@ -472,7 +411,7 @@ func LeaveServer(c *fiber.Ctx) error {
 	scanner := db.Query(queryGetChannels, serverId).Iter().Scanner()
 	for scanner.Next() {
 		var channel models.Channel
-		err := scanner.Scan(&channel.ServerId, &channel.ChannelId, &channel.Category, &channel.Name, &channel.Status, &channel.Type)
+		err := scanner.Scan(&channel.ServerId, &channel.ChannelId, &channel.Category, &channel.Name, &channel.ParentId, &channel.ParentPosition, &channel.Position, &channel.Status, &channel.Type)
 		if err != nil {
 			log.Error(err)
 			return c.Status(404).JSON(fiber.Map{"error": "Can't find any channels in this server."})
@@ -540,7 +479,7 @@ func CreateChannel(c *fiber.Ctx) error {
 	newChannel := body.Channel
 	newChannel.ChannelId = utils.GenerateNanoid()
 
-	queryCreateChannel := "INSERT INTO channels_test (server_id, channel_id, group, name, parent_id, parent_position, position, status, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	queryCreateChannel := "INSERT INTO channels (server_id, channel_id, group, name, parent_id, parent_position, position, status, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	if err := db.Query(queryCreateChannel, newChannel.ServerId, newChannel.ChannelId, newChannel.Category, newChannel.Name, newChannel.ParentId, newChannel.ParentPosition, newChannel.Position, newChannel.Status, newChannel.Type).Exec(); err != nil {
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't create the new channel"})
@@ -581,7 +520,7 @@ func DeleteChannel(c *fiber.Ctx) error {
 		return c.Status(422).JSON(fiber.Map{"error": "Error when parsing the server's informations"})
 	}
 
-	queryDeleteChannel := "DELETE FROM channels_test WHERE server_id = ? AND channel_id = ?"
+	queryDeleteChannel := "DELETE FROM channels WHERE server_id = ? AND channel_id = ?"
 	if err := db.Query(queryDeleteChannel, body.ServerId, body.ChannelId).Exec(); err != nil {
 		log.Error(err)
 		return c.Status(500).JSON(fiber.Map{"error": "Couldn't delete the channel"})
@@ -672,7 +611,7 @@ func broadcastServerChanges(users []gocql.UUID, opts Options, typeOfMessage stri
 			},
 		}
 		data, err = proto.Marshal(messageToSend)
-	case "server_join":
+	case "server_join", "server_creation":
 		messageToSend := &protobuf.ServerMessage{
 			Type: typeOfMessage,
 			Payload: &protobuf.ServerMessage_ServerJoin{

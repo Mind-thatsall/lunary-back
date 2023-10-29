@@ -25,8 +25,6 @@ type receivedMessage struct {
 }
 
 func Connect(c *websocket.Conn) {
-	// c.Locals is added to the *websocket.Conn
-	//
 	var newMsg receivedMessage
 
 	var (
@@ -78,7 +76,7 @@ func Connect(c *websocket.Conn) {
 			c.WriteMessage(websocket.BinaryMessage, data)
 
 		} else if newMsg.Type == "change_server" {
-			channels, err := getInfos(newMsg.ServerId)
+			channels, err := getServer(newMsg.ServerId)
 			if err != nil {
 				log.Error(err)
 			}
@@ -170,10 +168,22 @@ func getInformations(userId gocql.UUID, pos string) (*protobuf.ServerMessage_Ini
 		servers = append(servers, &server)
 	}
 
+	queryStates := "SELECT server_id, last_channel_id FROM user_to_server_state WHERE user_id = ?"
+	scanner := db.Query(queryStates, userId).Iter()
+
+	var serverID, channelID string
+	serverStates := protobuf.ServerStates{
+		Map: make(map[string]string),
+	}
+	for scanner.Scan(&serverID, &channelID) {
+		serverStates.Map[serverID] = channelID
+	}
+
 	message.InitialLoad.User = &user
 	message.InitialLoad.Servers = servers
+	message.InitialLoad.ServerStates = &serverStates
 	if pos != "me" {
-		channels, err := getInfos(pos)
+		channels, err := getServer(pos)
 		if err != nil {
 			return nil, err
 		}
@@ -201,14 +211,14 @@ type Category struct {
 	Channels []ChannelTest `json:"channels"`
 }
 
-func getInfos(serverId string) (*protobuf.ServerInfos, error) {
+func getServer(serverId string) (*protobuf.ServerInfos, error) {
 	db := database.DB
 	var sortedChannels []*protobuf.Channel
 	message := &protobuf.ServerInfos{
 		Categories: []*protobuf.Categories{},
 	}
 
-	queryAllChannels := "SELECT * FROM channels_test WHERE server_id = ?"
+	queryAllChannels := "SELECT * FROM channels WHERE server_id = ?"
 	scanner := db.Query(queryAllChannels, serverId).Iter().Scanner()
 	for scanner.Next() {
 		channel := &protobuf.Channel{}
