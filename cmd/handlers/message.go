@@ -38,7 +38,7 @@ func NewMessage(c *fiber.Ctx) error {
 	timestamp := timestamppb.New(t)
 	message.CreatedAt = t
 
-	q := db.Query("INSERT INTO messages (message_id, channel_id, content, created_at, sender_id, server_id) VALUES (?, ?, ?, ?, ?, ?)", message.MessageId, message.ChannelId, message.Content, message.CreatedAt, message.User.Id, message.ServerId)
+	q := db.Query("INSERT INTO messages (message_id, channel_id, content, mentions, mentions_roles, created_at, sender_id, server_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", message.MessageId, message.ChannelId, message.Content, message.Mentions, message.MentionsRoles, message.CreatedAt, message.User.Id, message.ServerId)
 	if err := q.Exec(); err != nil {
 		log.Errorf("Error when creating the user: %v", err)
 	}
@@ -87,7 +87,7 @@ func NewDM(c *fiber.Ctx) error {
 	timestamp := timestamppb.New(t)
 	message.CreatedAt = t
 
-	q := db.Query("INSERT INTO messages (message_id, channel_id, content, created_at, sender_id, server_id) VALUES (?, ?, ?, ?, ?, ?)", message.MessageId, message.ChannelId, message.Content, message.CreatedAt, message.User.Id, message.ServerId)
+	q := db.Query("INSERT INTO messages (message_id, channel_id, content, mentions, mentions_roles, created_at, sender_id, server_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", message.MessageId, message.ChannelId, message.Content, message.Mentions, message.MentionsRoles, message.CreatedAt, message.User.Id, message.ServerId)
 	if err := q.Exec(); err != nil {
 		log.Errorf("Error when creating the user: %v", err)
 	}
@@ -124,15 +124,24 @@ func broadcastMessage(sender models.User, users []gocql.UUID, message models.Mes
 		Avatar:      sender.Avatar,
 	}
 
+	var mentions []string
+	if len(message.Mentions) > 0 {
+		for _, mentionUUID := range message.Mentions {
+			mentions = append(mentions, mentionUUID.String())
+		}
+	}
+
 	messageToSend := &protobuf.ServerMessage{
 		Type: "message",
 		Payload: &protobuf.ServerMessage_UserMessage{
 			UserMessage: &protobuf.UserMessage{
-				Id:        message.MessageId.String(),
-				Content:   message.Content,
-				ChannelId: message.ChannelId,
-				CreatedAt: timestamp,
-				Sender:    messageSender,
+				Id:            message.MessageId.String(),
+				Content:       message.Content,
+				Mentions:      mentions,
+				MentionsRoles: message.MentionsRoles,
+				ChannelId:     message.ChannelId,
+				CreatedAt:     timestamp,
+				Sender:        messageSender,
 			},
 		},
 	}
@@ -163,7 +172,7 @@ func GetMessageFromChannel(c *fiber.Ctx) error {
 		var message models.Message
 		var user models.User
 
-		err := scanner.Scan(&message.ChannelId, &message.CreatedAt, &message.MessageId, &message.Content, &message.UserId, &message.ServerId)
+		err := scanner.Scan(&message.ChannelId, &message.CreatedAt, &message.MessageId, &message.Content, &message.Mentions, &message.MentionsRoles, &message.UserId, &message.ServerId)
 		if err != nil {
 			log.Error(err)
 		}

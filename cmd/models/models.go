@@ -41,13 +41,15 @@ type Session struct {
 }
 
 type Message struct {
-	MessageId gocql.UUID `db:"message_id" json:"id"`
-	ChannelId string     `db:"channel_id" json:"channel_id"`
-	ServerId  string     `db:"server_id" json:"server_id"`
-	Content   string     `db:"content" json:"content"`
-	User      User       `db:"-" json:"sender"`
-	UserId    gocql.UUID `db:"user_id" json:"-"`
-	CreatedAt time.Time  `db:"created_at" json:"createdAt"`
+	MessageId     gocql.UUID   `db:"message_id" json:"id"`
+	ChannelId     string       `db:"channel_id" json:"channel_id"`
+	ServerId      string       `db:"server_id" json:"server_id"`
+	Content       string       `db:"content" json:"content"`
+	Mentions      []gocql.UUID `db:"mentions" json:"mentions"`
+	MentionsRoles []string     `db:"mentions_roles" json:"mentionsRoles"`
+	User          User         `db:"-" json:"sender"`
+	UserId        gocql.UUID   `db:"user_id" json:"-"`
+	CreatedAt     time.Time    `db:"created_at" json:"createdAt"`
 }
 
 type Server struct {

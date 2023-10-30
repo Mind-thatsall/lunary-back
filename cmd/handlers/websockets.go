@@ -57,6 +57,7 @@ func Connect(c *websocket.Conn) {
 			continue
 		}
 		log.Info("recv: ", newMsg)
+
 		if newMsg.Type == "initial" {
 			message, err := getInformations(userUUID, newMsg.Position)
 			if err != nil {
@@ -181,7 +182,7 @@ func getInformations(userId gocql.UUID, pos string) (*protobuf.ServerMessage_Ini
 
 	message.InitialLoad.User = &user
 	message.InitialLoad.Servers = servers
-	message.InitialLoad.ServerStates = &serverStates
+	message.InitialLoad.Map = &serverStates
 	if pos != "me" {
 		channels, err := getServer(pos)
 		if err != nil {
@@ -251,6 +252,29 @@ func getServer(serverId string) (*protobuf.ServerInfos, error) {
 			channels = append(channels, sortedChannels[i])
 		}
 		message.Categories = append(message.Categories, &protobuf.Categories{GroupName: currentCat, Channels: channels})
+	}
+
+	var usersID []gocql.UUID
+	queryAllUsers := "SELECT users FROM server_to_users WHERE server_id = ?"
+	errUsers := db.Query(queryAllUsers, serverId).Scan(&usersID)
+	if errUsers != nil {
+		log.Error(errUsers)
+		return nil, fmt.Errorf("Impossible to fetch servers")
+	}
+
+	queryGetUser := "SELECT id, about, avatar, banner, displayname, email, username FROM users WHERE id = ?"
+	for _, id := range usersID {
+		var user protobuf.User
+		var userUUID gocql.UUID
+		errUser := db.Query(queryGetUser, id).Scan(&userUUID, &user.About, &user.Avatar, &user.Banner, &user.DisplayName, &user.Email, &user.Username)
+		if errUser != nil {
+			log.Error(errUser)
+			return nil, fmt.Errorf("Impossible to fetch servers")
+		}
+
+		user.Id = userUUID.String()
+
+		message.Users = append(message.Users, &user)
 	}
 
 	return message, nil

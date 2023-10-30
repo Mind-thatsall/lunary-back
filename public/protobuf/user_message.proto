@@ -23,8 +23,10 @@ message UserMessage {
   string id = 1;
   string content = 2;
   string channelId = 3;
-  google.protobuf.Timestamp created_at = 4;
-  User sender = 5;
+  repeated string mentions = 4;
+  repeated string mentionsRoles = 5;
+  google.protobuf.Timestamp created_at = 6;
+  User sender = 7;
 }
 
 message ServerDeletion {
@@ -83,7 +85,7 @@ message Server {
 
 message ServerInfos {
   repeated Categories categories = 1;
-
+  repeated User users = 2;
 }
 
 message Categories {
